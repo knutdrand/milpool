@@ -69,7 +69,7 @@ class YXMILPool(SetPooling):
     def __init__(self):
         super().__init__()
         self.q = torch.tensor([0.5])
-        self.logOw = torch.nn.parameter.Parameter(torch.logit(torch.tensor([0.01])))
+        self.logOw = torch.nn.parameter.Parameter(torch.logit(torch.tensor([0.1])))
 
     def _pre_calc(self, I):
         return YXPsi().apply(I, self.logOw, self.q)
@@ -77,5 +77,15 @@ class YXMILPool(SetPooling):
     def _post_calc(self, S):
         return torch.log(self.q/(1-self.q))+S
 
-def max_pool(X):
-    return torch.max(X, axis=-2)[0]
+# def max_pool(n):
+#     mp = torch.nn.MaxPool1d(n)
+#     return lambda X: mp(torch.squeeze(X, -1))
+# 
+
+class MaxPool(torch.nn.Module):
+    def forward(self, X):
+        return torch.max(X, axis=-2)[0]
+
+class AvgPool(torch.nn.Module):
+    def forward(self, X):
+        return torch.mean(X, axis=-2)

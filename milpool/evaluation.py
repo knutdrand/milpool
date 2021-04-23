@@ -4,8 +4,7 @@ from sklearn.metrics import confusion_matrix
 def test(model, instances, labels):
     crit = torch.nn.BCELoss(reduction='mean')
     p = torch.sigmoid(model(instances))
-    print(p.dtype, labels.dtype)
-    print(crit(p, labels))
+    print("Loss: ", float(crit(p, labels)))
     print(confusion_matrix((p>0.5).numpy(),(labels>0.5).numpy()))
 
 def plotter(X, ys, zs):
