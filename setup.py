@@ -35,6 +35,8 @@ setup(
     entry_points={
         'console_scripts': [
             'milpool=milpool.cli:main',
+            'milsimulate=milpool.cli:simulate',
+            'milplot=milpool.cli:plot',
         ],
     },
     install_requires=requirements,
