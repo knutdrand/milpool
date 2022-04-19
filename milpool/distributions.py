@@ -37,8 +37,8 @@ class NormalDistribution(Distribution):
 class MixtureXY(Distribution):
     mu_1: float=torch.tensor(0.)
     mu_2: float=torch.tensor(1.)
-    sigma: float=torch.tensor(3.)
-    w: float=torch.tensor(0.66666)
+    sigma: float=torch.tensor(1.)
+    w: float=torch.tensor(0.1)
     params = (mu_1, mu_2, sigma, w)
 
     def sample(self, n=1):
@@ -112,7 +112,7 @@ class PureMixtureConditional(MixtureConditional):
         x, y = self.sample(n_samples)
         lr = LogisticRegression(penalty='none')
         lr.fit(x[:, None], y)
-        return np.array([lr.intercept_[0], lr.coef_[0,0]])
+        return np.array([lr.intercept_[0], lr.coef_[0, 0]])
         return np.array(lr.intercept_, lr.coef_[0])
 
 
