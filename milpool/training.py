@@ -1,7 +1,23 @@
 import torch
 from copy import deepcopy
-from .visualization import plot_distributions_2d
+# from .visualization import plot_distributions_2d
 from itertools import chain
+
+def simple_mil_training(X, y, model, n_iterations=1000, n_epochs=5):
+    crit = torch.nn.BCEWithLogitsLoss(reduction='mean')
+    optim = torch.optim.SGD(model.parameters(), lr=1e-1, momentum=0.0)
+    param_list = []
+    for epoch in range(n_epochs):
+        for iteration in range(n_iterations):
+            optim.zero_grad()
+            rho = model(X)
+            loss = crit(rho, y)
+            loss.backward()
+            optim.step()
+        # print([p.detach() for p in model.parameters()])
+    return model
+            
+
 def train_mil(X, y, model, n_iterations=1000, n_epochs=5):
     params = [
         {'params': model.instance_model.parameters(), "lr": 1e-1, "momentum": 0.0},
