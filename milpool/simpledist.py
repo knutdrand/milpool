@@ -1,4 +1,7 @@
-from .distributions import *
+import torch
+from .distributions import MixtureConditional, MixtureX, MixtureXY
+from .reparametrization import FReparam, reparametrize
+
 
 class SimpleMixtureXY(MixtureXY):
     def __init__(self, *args, **kwargs):
@@ -7,6 +10,7 @@ class SimpleMixtureXY(MixtureXY):
 
     def log_likelihood(self, x, y, mu_1, mu_2):
         return super().log_likelihood(x, y, mu_1, mu_2, self.sigma, self.w)
+
 
 class SimpleMixtureX(MixtureX):
 
@@ -17,13 +21,16 @@ class SimpleMixtureX(MixtureX):
     def log_likelihood(self, x, mu_1, mu_2):
         return super().log_likelihood(x, mu_1, mu_2, self.sigma, self.w)
 
+
 class SimpleMixtureConditional(MixtureConditional):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.params = (self.mu_1, self.mu_2)
 
     def log_likelihood(self, x, y, mu_1, mu_2):
         return super().log_likelihood(x, y, mu_1, mu_2, self.sigma, self.w)
+
 
 class SimpleMixtureXYRP(MixtureXY):
     def __init__(self, *args, **kwargs):
@@ -43,6 +50,7 @@ class SimpleMixtureXYRP(MixtureXY):
     def log_likelihood(self, x, y, alpha, beta):
         return super().log_likelihood(x, y, self.get_mu_1(alpha, beta), self.get_mu_2(alpha, beta), self.sigma, self.w)
 
+
 class SimpleMixtureXRP(MixtureX):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -52,7 +60,6 @@ class SimpleMixtureXRP(MixtureX):
         self.params = (self.alpha, self.beta)
         self.logodds_w = torch.log(self.w/(1-self.w))
 
-
     def get_mu_1(self, alpha, beta):
         return -(alpha-self.logodds_w)/beta+beta*self.sigma**2/2
 
@@ -61,6 +68,7 @@ class SimpleMixtureXRP(MixtureX):
 
     def log_likelihood(self, x, alpha, beta):
         return super().log_likelihood(x, self.get_mu_1(alpha, beta), self.get_mu_2(alpha, beta), self.sigma, self.w)
+
 
 class SimpleMixtureConditionalRP(MixtureConditional):
     def __init__(self, *args, **kwargs):
@@ -74,8 +82,13 @@ class SimpleMixtureConditionalRP(MixtureConditional):
         eta = alpha+beta*x
         return y*torch.log(torch.sigmoid(eta))+(1-y)*torch.log(torch.sigmoid(-eta))
 
+
+reparam = FReparam(torch.tensor(0.333), torch.tensor(1.))
+
 triplet = (SimpleMixtureX, SimpleMixtureXY, SimpleMixtureConditional)
-rp_triplet = (SimpleMixtureXRP, SimpleMixtureXYRP, SimpleMixtureConditionalRP)
+rp_triplet = tuple(reparametrize(cls, reparam) for cls in triplet)
+
+#rp_triplet = (SimpleMixtureXRP, SimpleMixtureXYRP, SimpleMixtureConditionalRP)
 """reparam
 a = (mu_1**2-mu_2**2)/(2*sigma**2) + inv_sigma(w)
 b = (mu_2-mu_1)/sigma**2
