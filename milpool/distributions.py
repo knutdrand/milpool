@@ -3,6 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from .reparametrization import Reparametrization, reparametrize
 from sklearn.linear_model import LogisticRegression
+from sklearn.mixture import GaussianMixture
 
 
 @dataclass
@@ -18,8 +19,8 @@ class Distribution:
         f = self.get_func(*x)
         return -np.array(torch.autograd.functional.hessian(f, self.params))# (self.mu, self.sigma)))/n
 
-    def l(self, *x):
-        return self.log_likelihood(*x, *self.params)
+    def prob(self, *x):
+        return np.exp(self.log_likelihood(*x, *self.params))
 
 
 class NormalDistribution(Distribution):
@@ -35,28 +36,38 @@ class NormalDistribution(Distribution):
 
 
 class MixtureXY(Distribution):
-    mu_1: float=torch.tensor(0.)
-    mu_2: float=torch.tensor(1.)
-    sigma: float=torch.tensor(1.)
-    w: float=torch.tensor(0.1)
-    params = (mu_1, mu_2, sigma, w)
+    # mu_1: float=torch.tensor(-1.)
+    # mu_2: float=torch.tensor(1.)
+    # sigma: float=torch.tensor(0.5)
+    # w: float=torch.tensor(0.5)
+    # params = (mu_1, mu_2, sigma, w)
+
+    def __init__(self, mu_1=torch.tensor(0.), mu_2=torch.tensor(1.), sigma=torch.tensor(1.), w=torch.tensor(0.3333)):
+        self.mu_1 = torch.tensor(mu_1)
+        self.mu_2 = torch.tensor(mu_2)
+        self.sigma = torch.tensor(sigma)
+        self.w = torch.tensor(w)
+        self.params = (self.mu_1, self.mu_2, self.sigma, self.w)
 
     def sample(self, n=1):
         y = torch.bernoulli(self.w*torch.ones(n))
         mu = self.mu_1*y+self.mu_2*(1-y)
         return torch.normal(mu, self.sigma), y
     
-    def l1(self, x):
-        mu_1, mu_2, sigma, w = (self.mu_1, self.mu_2, self.sigma, self.w)
-        return torch.log(w)+torch.log(1/torch.sqrt(2*np.pi*sigma**2)) -(x-mu_1)**2/(2*sigma**2)
+    def l1(self, x, mu_1, mu_2, sigma, w):
+        # mu_1, mu_2, sigma, w = (self.mu_1, self.mu_2, self.sigma, self.w)
+        return torch.log(w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_1)**2/(2*sigma**2)
 
-    def l2(self, x):
-        mu_1, mu_2, sigma, w = (self.mu_1, self.mu_2, self.sigma, self.w)
-        return torch.log(w)+torch.log(1/torch.sqrt(2*np.pi*sigma**2)) -(x-mu_2)**2/(2*sigma**2)
+    def l2(self, x, mu_1, mu_2, sigma, w):
+        # mu_1, mu_2, sigma, w = (self.mu_1, self.mu_2, self.sigma, self.w)
+        return torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_2)**2/(2*sigma**2)
+        # torch.log(1-w)+torch.log(1/torch.sqrt(2*np.pi*sigma**2)) -(x-mu_2)**2/(2*sigma**2)
 
     def log_likelihood(self, x, y, mu_1, mu_2, sigma, w):
-        l1 = torch.log(w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_1)**2/(2*sigma**2)
-        l2 = torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_2)**2/(2*sigma**2)
+        l1 = self.l1(x, mu_1, mu_2, sigma, w)
+        # torch.log(w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_1)**2/(2*sigma**2)
+        l2 = self.l2(x, mu_1, mu_2, sigma, w)
+        # torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_2)**2/(2*sigma**2)
         return y*l1+(1-y)*l2
 
     def get_square_errors(self, n_samples=1000, n_iterations=1000):
@@ -78,15 +89,50 @@ class MixtureXY(Distribution):
         return (mu_1, mu_2, sigma, w)
 
 
-@dataclass
 class MixtureX(MixtureXY):
     def sample(self, n=1):
         return super().sample(n)[:1]
 
     def log_likelihood(self, x, mu_1, mu_2, sigma, w):
+        l1 = self.l1(x, mu_1, mu_2, sigma, w)
+        l2 = self.l2(x, mu_1, mu_2, sigma, w)
+        # torch.log(w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_1)**2/(2*sigma**2)
+        # l2 = torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_2)**2/(2*sigma**2)
+        return torch.logaddexp(l1, l2)
         L1 = w*(1/np.sqrt(2*np.pi)/sigma*torch.exp(-(x-mu_1)**2/(2*sigma**2)))
         L2 = (1-w)*(1/np.sqrt(2*np.pi)/sigma*torch.exp(-(x-mu_2)**2/(2*sigma**2)))
         return torch.log(L1+L2)
+
+    def estimate_parameters_sk(self, n=1000):
+        X = np.array(self.sample(n)[0])
+        model = GaussianMixture(n_components=2, covariance_type="tied")
+        model.fit(X[:, None])
+        return (model.means_[0, 0], model.means_[1, 0], model.covariances_[0, 0] ,model.weights_[0])
+
+    def estimate_parameters(self, n=1000):
+        return self.estimate_parameters_sk(n=n)
+        n_iterations = 200
+        s = self.sample(n)
+        x = s[0]
+        weights = torch.ones(n)*0.4
+        mu_1, mu_2 = torch.rand(2)*10-5
+        w = torch.rand(1)
+        sigma = torch.rand(1)*10
+        params = tuple(torch.tensor(p) for p in (mu_1, mu_2, sigma, w))
+        for _ in range(n_iterations):
+            l1, l2 = (self.l1(x, *params), self.l2(x, *params))
+            weights = torch.exp(l1-torch.logaddexp(l1, l2))
+            # print(weights)
+            # super().log_likelihood(x, 1, *params)-self.log_likelihood(x, *params))
+            m = weights > 1
+            assert torch.all(~m), (weights[m], super().log_likelihood(x, 1, *params)[m], self.log_likelihood(x, *params)[m])
+            mu_0 = torch.sum(weights*x)/torch.sum(weights)
+            mu_1 = torch.sum((1-weights)*x)/torch.sum(1-weights)
+            sigma = torch.sqrt(torch.sum((weights*(x-mu_0)**2 + (1-weights)*(x-mu_1)**2))/(torch.sum(weights)+torch.sum(1-weights)))
+            w = torch.mean(weights)
+            params = (mu_0, mu_1, sigma, w)
+        # print(params)
+        return params
 
 
 class MixtureConditional(MixtureXY):

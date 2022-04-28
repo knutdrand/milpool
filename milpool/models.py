@@ -2,7 +2,9 @@ import torch
 
 from .pool import XYMILPool
 
+
 class Quadratic(torch.nn.Module):
+
      def __init__(self, n_input=1):
          super().__init__()
          self.linear = torch.nn.Linear(n_input, 1)

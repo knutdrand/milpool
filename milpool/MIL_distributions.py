@@ -8,7 +8,7 @@ import torch
 
 class MILXY(MixtureXY):
     q: float = torch.tensor(0.5)
-    group_size: float = 6
+    group_size: float = 10
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
