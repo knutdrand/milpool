@@ -1,4 +1,4 @@
-from milpool.distributions import NormalDistribution, MixtureX, MixtureXY, MixtureConditional, rp_full_triplet, PureMixtureConditionalRP, full_triplet
+from milpool.distributions import NormalDistribution, MixtureX, MixtureXY, MixtureConditional, rp_full_triplet, PureMixtureConditionalRP, full_triplet, ab_full_triplet
 from milpool.MIL_distributions import reparam_dists
 import numpy as np
 import torch
@@ -8,6 +8,7 @@ np.set_printoptions(suppress=True)
 
 def get_var(information):
     # print(np.linalg.eig(information)[0])
+    print("#--------->", np.linalg.det(information))
     return np.linalg.inv(information)
 
 
@@ -61,16 +62,22 @@ def _plot_errors(dist, color="red", i=0):
     plt.xlabel("n_samples")
 
 
-def plot_all_errors(dist, color="red"):
-    fig, axes = plt.subplots((len(dist.params)+1)//2, 2)
+def plot_all_errors(dist, color="red", n_params=None):
+    if n_params is None:
+        n_params = len(dist.params)
     name = dist.__class__.__name__
     I = dist.estimate_fisher_information()
+    I = I[:n_params, :n_params]
     all_var = get_var(I)
     print(I)
     print(all_var)
     n_samples = [200*i for i in range(1, 10)]
-    errors = [dist.get_square_errors(n_samples=n, n_iterations=100) for n in n_samples]
-    for i, param in enumerate(dist.params):
+    errors = [dist.get_square_errors(n_samples=n, n_iterations=200, do_plot=False) for n in n_samples]
+    dist.get_square_errors(n_samples=n_samples[-1], n_iterations=200, do_plot=True)
+    fig, axes = plt.subplots((n_params+1)//2, 2)
+    if (n_params+1)//2 == 1:
+        axes = [axes]
+    for i, param in enumerate(dist.params[:n_params]):
         var = all_var[i, i]
         ax = axes[i//2][i % 2]
         ax.axline((0, 0), slope=1/var, color=color, label=name+" CRLB")
@@ -161,8 +168,8 @@ def plot_witness_curve():
         show_fig(f"Information vs witness rate (n_pos={n_pos})", f"w{n_pos}.png")
 
 
-for dist in full_triplet:
-    plot_all_errors(dist(), color="red")
+for dist in ab_full_triplet:
+    plot_all_errors(dist(), color="red", n_params=2)
     plt.show()
 exit()
 plot_errors(rp_full_triplet[0](), color="red", i=0, inverse=True)

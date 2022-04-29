@@ -35,6 +35,8 @@ def reparametrize(cls, R):
         def estimate_parameters(self, n_samples=1000):
             estimates = torch.tensor(super().estimate_parameters(n_samples))
             new_estimates = np.array([f(*estimates) for f in R.old_to_new])
+            
+            #print(new_estimates)
             # print(estimates, new_estimates, self.params)
             return new_estimates
 

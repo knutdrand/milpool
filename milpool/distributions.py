@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from .reparametrization import Reparametrization, reparametrize
 from sklearn.linear_model import LogisticRegression
 from sklearn.mixture import GaussianMixture
+import matplotlib.pyplot as plt
 
 
 @dataclass
@@ -70,9 +71,16 @@ class MixtureXY(Distribution):
         # torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_2)**2/(2*sigma**2)
         return y*l1+(1-y)*l2
 
-    def get_square_errors(self, n_samples=1000, n_iterations=1000):
+    def get_square_errors(self, n_samples=1000, n_iterations=1000, do_plot=False):
         estimates = np.array([self.estimate_parameters(n_samples) for _ in range(n_iterations)])
         true_params = np.array(self.params)
+        if do_plot:
+            for i, param in enumerate(true_params):
+                plt.hist(estimates[:, i])
+                plt.axvline(x=param)
+                plt.title(f"n={n_samples}")
+                plt.show()
+        
         return ((estimates-true_params)**2).sum(axis=0)/n_iterations
 
     def estimate_parameters(self, n=1000):
@@ -107,7 +115,8 @@ class MixtureX(MixtureXY):
         X = np.array(self.sample(n)[0])
         model = GaussianMixture(n_components=2, covariance_type="tied")
         model.fit(X[:, None])
-        return (model.means_[0, 0], model.means_[1, 0], model.covariances_[0, 0] ,model.weights_[0])
+        return (model.means_[0, 0], model.means_[1, 0],
+                np.sqrt(model.covariances_[0, 0]), model.weights_[0])
 
     def estimate_parameters(self, n=1000):
         return self.estimate_parameters_sk(n=n)
@@ -182,11 +191,36 @@ MidPointReparam = Reparametrization(
                 lambda _, __, sigma, w: sigma**2*torch.log(w/(1-w)),
                 lambda _, __, sigma, w: sigma**2),
     new_to_old=(lambda eta_0, eta_1, eta_2, eta_3: eta_0 + eta_2/(2*eta_1) + eta_1/2,
-                lambda eta_0, eta_1, eta_2, eta_3: eta_0 + eta_2/(2*eta_1) -eta_1/2,
+                lambda eta_0, eta_1, eta_2, eta_3: eta_0 + eta_2/(2*eta_1) - eta_1/2,
                 lambda eta_0, eta_1, eta_2, eta_3: torch.sqrt(eta_3),
                 lambda eta_0, eta_1, eta_2, eta_3: torch.sigmoid(eta_2/eta_3)))
-                
+
+
+ABReparam = Reparametrization(
+    old_to_new=(lambda mu_0, mu_1, sigma, w: (mu_0-mu_1)/sigma**2,
+                lambda mu_0, mu_1, sigma, w: (mu_1**2-mu_0**2)/(2*sigma**2)+torch.log(w/(1-w)),
+                lambda _, __, sigma, w: sigma,
+                lambda _, __, sigma, w: w),
+    new_to_old=(lambda alpha, beta, sigma, w: -(beta-torch.log(w/(1-w)))/alpha+sigma**2*alpha/2,
+                lambda alpha, beta, sigma, w: -(beta-torch.log(w/(1-w)))/alpha-sigma**2*alpha/2,
+                lambda alpha, beta, sigma, w: sigma,
+                lambda alpha, beta, sigma, w: w))
+
+
+MidPointReparam = Reparametrization(
+    old_to_new=(lambda mu_0, mu_1, sigma, w: (mu_0+mu_1)/2-sigma**2*torch.log(w/(1-w))/(2*(mu_0-mu_1)),
+                lambda mu_0, mu_1, _, __: (mu_0-mu_1),
+                lambda _, __, sigma, w: sigma**2*torch.log(w/(1-w)),
+                lambda _, __, sigma, w: sigma**2),
+    new_to_old=(lambda eta_0, eta_1, eta_2, eta_3: eta_0 + eta_2/(2*eta_1) + eta_1/2,
+                lambda eta_0, eta_1, eta_2, eta_3: eta_0 + eta_2/(2*eta_1) - eta_1/2,
+                lambda eta_0, eta_1, eta_2, eta_3: torch.sqrt(eta_3),
+                lambda eta_0, eta_1, eta_2, eta_3: torch.sigmoid(eta_2/eta_3)))
+
 rp_full_triplet = tuple(reparametrize(cls, MidPointReparam) for cls in full_triplet)
+
+ab_full_triplet = tuple(reparametrize(cls, ABReparam) for cls in full_triplet)
+
 
 PureMidPointReparam = Reparametrization(
     old_to_new=(lambda alpha, beta: -alpha/beta,
