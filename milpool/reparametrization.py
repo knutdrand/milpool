@@ -90,7 +90,7 @@ def np_reparametrize(cls, R):
 
         def estimate_parameters(self, n_samples=1000):
             estimates = torch.tensor(super().estimate_parameters(n_samples))
-            new_estimates = np.array(R.new_to_old(estimates))
+            new_estimates = np.array(R.old_to_new(estimates))
             return new_estimates
 
     NewClass.__name__ = cls.__name__+"npRP"

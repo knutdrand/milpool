@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from dataclasses import dataclass
-from .reparametrization import Reparametrization, reparametrize, NpReparametrization
+from .reparametrization import Reparametrization, reparametrize, NpReparametrization, np_reparametrize
 from sklearn.linear_model import LogisticRegression
 from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
@@ -127,8 +127,11 @@ class MixtureX(MixtureXY):
 
     def estimate_parameters_sk(self, n=1000):
         X = np.array(self.sample(n)[0])
-        model = GaussianMixture(n_components=2, covariance_type="tied")
+        model = GaussianMixture(n_components=2, covariance_type="tied", reg_covar=0)
         model.fit(X[:, None])
+        if False:
+            print(model.means_[0, 0], model.means_[1, 0],
+                  np.sqrt(model.covariances_[0, 0]), model.weights_)
         return (model.means_[0, 0], model.means_[1, 0],
                 np.sqrt(model.covariances_[0, 0]), model.weights_[0])
 
@@ -231,8 +234,42 @@ MidPointReparam = Reparametrization(
                 lambda eta_0, eta_1, eta_2, eta_3: torch.sqrt(eta_3),
                 lambda eta_0, eta_1, eta_2, eta_3: torch.sigmoid(eta_2/eta_3)))
 
-rp_full_triplet = tuple(reparametrize(cls, MidPointReparam) for cls in full_triplet)
 
+class MarginalReparam(NpReparametrization):
+    def _old_to_new(self, params):
+        mu_0, mu_1, sigma, w = params
+        return [(mu_0+mu_1)/2,
+                2*torch.log(w/(1-w))/(mu_0-mu_1),
+                # (mu_0-mu_1)/2,
+                sigma,
+                torch.log(w/(1-w))]
+
+    def _new_to_old(self, theta):
+        return [(theta[0] + theta[3]/theta[1]),
+                (theta[0] - theta[3]/theta[1]),
+                theta[2],
+                torch.sigmoid(theta[3])]
+
+
+class MarginalReparamOneWay(NpReparametrization):
+    def _old_to_new(self, params):
+        mu_0, mu_1, sigma, w = params
+        return [(mu_0+mu_1)/2,
+                (mu_0-mu_1)**2,
+                #2*torch.log(w/(1-w))/(mu_0-mu_1),
+                # (mu_0-mu_1)/2,
+                sigma,
+                torch.log(w/(1-w))**2]
+
+    def _new_to_old(self, theta):
+        return [(theta[0] + theta[3]/theta[1]),
+                (theta[0] - theta[3]/theta[1]),
+                theta[2],
+                torch.sigmoid(theta[3])]
+
+
+rp_full_triplet = tuple(reparametrize(cls, MidPointReparam) for cls in full_triplet)
+marginal_triplet = tuple(np_reparametrize(cls, MarginalReparamOneWay()) for cls in full_triplet)
 ab_full_triplet = tuple(reparametrize(cls, ABReparam) for cls in full_triplet)
 
 

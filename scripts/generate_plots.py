@@ -1,4 +1,4 @@
-from milpool.distributions import NormalDistribution, MixtureX, MixtureXY, MixtureConditional, rp_full_triplet, PureMixtureConditionalRP, full_triplet, ab_full_triplet
+from milpool.distributions import NormalDistribution, MixtureX, MixtureXY, MixtureConditional, rp_full_triplet, PureMixtureConditionalRP, full_triplet, ab_full_triplet, marginal_triplet
 from milpool.MIL_distributions import reparam_dists
 import numpy as np
 import torch
@@ -63,6 +63,7 @@ def _plot_errors(dist, color="red", i=0):
 
 
 def plot_all_errors(dist, color="red", n_params=None):
+    print(dist.params)
     if n_params is None:
         n_params = len(dist.params)
     name = dist.__class__.__name__
@@ -73,7 +74,7 @@ def plot_all_errors(dist, color="red", n_params=None):
     print(all_var)
     n_samples = [200*i for i in range(1, 10)]
     errors = [dist.get_square_errors(n_samples=n, n_iterations=200, do_plot=False) for n in n_samples]
-    dist.get_square_errors(n_samples=n_samples[-1], n_iterations=200, do_plot=True)
+    # dist.get_square_errors(n_samples=n_samples[-1], n_iterations=200, do_plot=True)
     fig, axes = plt.subplots((n_params+1)//2, 2)
     if (n_params+1)//2 == 1:
         axes = [axes]
@@ -168,8 +169,9 @@ def plot_witness_curve():
         show_fig(f"Information vs witness rate (n_pos={n_pos})", f"w{n_pos}.png")
 
 
-for dist in ab_full_triplet:
-    plot_all_errors(dist(), color="red", n_params=2)
+# for dist in marginal_triplet:
+for dist in rp_full_triplet:
+    plot_all_errors(dist(w=torch.tensor(0.1), mu_2=torch.tensor(5)), color="red", n_params=4)
     plt.show()
 exit()
 plot_errors(rp_full_triplet[0](), color="red", i=0, inverse=True)

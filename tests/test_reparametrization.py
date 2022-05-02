@@ -4,10 +4,18 @@ import torch
 
 
 from milpool.distributions import (
-    MidPointReparam, PureMidPointReparam, ABReparam, NormalDistribution, NormalNaturalReparam)
+    MidPointReparam, PureMidPointReparam, ABReparam, NormalDistribution, NormalNaturalReparam, MarginalReparam)
 from milpool.reparametrization import np_reparametrize
 
 
+@pytest.mark.parametrize("params", [[0, 1, 1, 0.4], [0, 1, 2, 0.2], [0.2, 1.3, 0.5, 0.7]])
+@pytest.mark.parametrize("reparam", [MarginalReparam()])
+def test_np_param(params, reparam):
+    params = torch.tensor(params)
+    new_params = reparam.old_to_new(params)
+    back_params = reparam.new_to_old(new_params)
+    print(params, new_params, back_params)
+    assert np.allclose(np.array(back_params), np.array(params))
 
 @pytest.mark.parametrize("params", [[0, 1, 1, 0.5], [0, 1, 2, 0.2], [0.2, 1.3, 0.5, 0.7]])
 def test_midpoint_reparam(params):
