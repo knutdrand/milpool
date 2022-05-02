@@ -47,6 +47,7 @@ class ALinearMIL(MIL):
             torch.nn.Linear(n_hidden, 1))
         super().__init__(n_input, instance_model, pooling)
 
+
 class AdjustedALinearMIL(ALinearMIL):
      def __init__(self, *args, **kwargs):
           super().__init__(*args, **kwargs)

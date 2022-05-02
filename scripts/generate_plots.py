@@ -171,7 +171,7 @@ def plot_witness_curve():
 
 # for dist in marginal_triplet:
 for dist in rp_full_triplet:
-    plot_all_errors(dist(w=torch.tensor(0.1), mu_2=torch.tensor(5)), color="red", n_params=4)
+    plot_all_errors(dist(w=torch.tensor(0.1), mu_2=torch.tensor(5.)), color="red", n_params=4)
     plt.show()
 exit()
 plot_errors(rp_full_triplet[0](), color="red", i=0, inverse=True)

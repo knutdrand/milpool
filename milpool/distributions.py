@@ -30,8 +30,8 @@ class NormalDistribution(Distribution):
     params = (mu, sigma)
 
     def __init__(self, mu, sigma):
-        self.mu = torch.tensor(mu)
-        self.sigma = torch.tensor(sigma)
+        self.mu = torch.as_tensor(mu)
+        self.sigma = torch.as_tensor(sigma)
         self.params = (mu, sigma)
 
     def sample(self, n=1):
@@ -58,10 +58,10 @@ class MixtureXY(Distribution):
     # params = (mu_1, mu_2, sigma, w)
 
     def __init__(self, mu_1=torch.tensor(0.), mu_2=torch.tensor(1.), sigma=torch.tensor(1.), w=torch.tensor(0.3333)):
-        self.mu_1 = torch.tensor(mu_1)
-        self.mu_2 = torch.tensor(mu_2)
-        self.sigma = torch.tensor(sigma)
-        self.w = torch.tensor(w)
+        self.mu_1 = torch.as_tensor(mu_1)
+        self.mu_2 = torch.as_tensor(mu_2)
+        self.sigma = torch.as_tensor(sigma)
+        self.w = torch.as_tensor(w)
         self.params = (self.mu_1, self.mu_2, self.sigma, self.w)
 
     def sample(self, n=1):
@@ -71,11 +71,11 @@ class MixtureXY(Distribution):
     
     def l1(self, x, mu_1, mu_2, sigma, w):
         # mu_1, mu_2, sigma, w = (self.mu_1, self.mu_2, self.sigma, self.w)
-        return torch.log(w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_1)**2/(2*sigma**2)
+        return torch.log(w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) - (x-mu_1)**2/(2*sigma**2)
 
     def l2(self, x, mu_1, mu_2, sigma, w):
         # mu_1, mu_2, sigma, w = (self.mu_1, self.mu_2, self.sigma, self.w)
-        return torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_2)**2/(2*sigma**2)
+        return torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) - (x-mu_2)**2/(2*sigma**2)
         # torch.log(1-w)+torch.log(1/torch.sqrt(2*np.pi*sigma**2)) -(x-mu_2)**2/(2*sigma**2)
 
     def log_likelihood(self, x, y, mu_1, mu_2, sigma, w):
@@ -115,6 +115,12 @@ class MixtureX(MixtureXY):
     def sample(self, n=1):
         return super().sample(n)[:1]
 
+    def plot(self):
+        d = torch.abs(self.mu_1- self.mu_2)
+        m = min(self.mu_1, self.mu_2)-d/2
+        x = torch.linspace(m, m+2*d, 100)
+        plt.plot(x, np.exp(self.log_likelihood(x, *self.params)))
+    
     def log_likelihood(self, x, mu_1, mu_2, sigma, w):
         l1 = self.l1(x, mu_1, mu_2, sigma, w)
         l2 = self.l2(x, mu_1, mu_2, sigma, w)
@@ -125,8 +131,7 @@ class MixtureX(MixtureXY):
         L2 = (1-w)*(1/np.sqrt(2*np.pi)/sigma*torch.exp(-(x-mu_2)**2/(2*sigma**2)))
         return torch.log(L1+L2)
 
-    def estimate_parameters_sk(self, n=1000):
-        X = np.array(self.sample(n)[0])
+    def estimate_parameters_sk(self, X):
         model = GaussianMixture(n_components=2, covariance_type="tied", reg_covar=0)
         model.fit(X[:, None])
         if False:
@@ -136,28 +141,49 @@ class MixtureX(MixtureXY):
                 np.sqrt(model.covariances_[0, 0]), model.weights_[0])
 
     def estimate_parameters(self, n=1000):
-        return self.estimate_parameters_sk(n=n)
-        n_iterations = 200
+        
         s = self.sample(n)
         x = s[0]
-        weights = torch.ones(n)*0.4
-        mu_1, mu_2 = torch.rand(2)*10-5
-        w = torch.rand(1)
+        # return self.estimate_parameters_sk(x)
+        return self._estimate(x)
+
+    def _estimate(self, x):
+        epoch = 100
+        n_iterations = epoch*5
+        # weights = torch.ones(x.shape[0])*0.4
+        mu_0 = torch.min(x)
+        mu_1 = torch.max(x) # , mu_1 = torch.rand(2)*10-5
+        w = torch.as_tensor(0.5)# torch.rand(1)
         sigma = torch.rand(1)*10
-        params = tuple(torch.tensor(p) for p in (mu_1, mu_2, sigma, w))
-        for _ in range(n_iterations):
+        params = tuple(torch.as_tensor(p) for p in (mu_0, mu_1, sigma, w))
+
+        #model = GaussianMixture(n_components=2, covariance_type="tied", reg_covar=0,
+        #weights_init=np.array([w, (1-w)]),
+        #                         means_init=np.array([[mu_0], [mu_1]]),
+        #                         precisions_init=np.array([[1/sigma]]))
+        # model.fit(x[:, None])
+        # plt.hist(np.array(x))
+        # plt.show()
+        for i in range(n_iterations):
             l1, l2 = (self.l1(x, *params), self.l2(x, *params))
             weights = torch.exp(l1-torch.logaddexp(l1, l2))
-            # print(weights)
-            # super().log_likelihood(x, 1, *params)-self.log_likelihood(x, *params))
             m = weights > 1
-            assert torch.all(~m), (weights[m], super().log_likelihood(x, 1, *params)[m], self.log_likelihood(x, *params)[m])
-            mu_0 = torch.sum(weights*x)/torch.sum(weights)
-            mu_1 = torch.sum((1-weights)*x)/torch.sum(1-weights)
-            sigma = torch.sqrt(torch.sum((weights*(x-mu_0)**2 + (1-weights)*(x-mu_1)**2))/(torch.sum(weights)+torch.sum(1-weights)))
-            w = torch.mean(weights)
+            if i % epoch == -1:
+                print(torch.logaddexp(l1, l2).sum())
+                print(params)
+                self.plot()
+                plt.scatter(x, weights)
+                plt.show()
+            assert torch.all(~m)
+            N_0 = weights.sum()
+            N_1 = (1-weights).sum()
+            mu_0 = torch.sum(weights*x)/N_0
+            mu_1 = torch.sum((1-weights)*x)/N_1
+            sigma = torch.sqrt(torch.sum((weights*(x-mu_0)**2 + (1-weights)*(x-mu_1)**2))/(N_0+N_1))
+            w = N_0/(N_0+N_1)# torch.mean(weights)
             params = (mu_0, mu_1, sigma, w)
-        # print(params)
+        # print(model.means_[0, 0], model.means_[1, 0],
+        #       np.sqrt(model.covariances_[0, 0]), model.weights_)
         return params
 
 
