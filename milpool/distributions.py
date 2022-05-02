@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from dataclasses import dataclass
-from .reparametrization import Reparametrization, reparametrize
+from .reparametrization import Reparametrization, reparametrize, NpReparametrization
 from sklearn.linear_model import LogisticRegression
 from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
@@ -18,7 +18,7 @@ class Distribution:
     def estimate_fisher_information(self, n=10000000):
         x = self.sample(n)
         f = self.get_func(*x)
-        return -np.array(torch.autograd.functional.hessian(f, self.params))# (self.mu, self.sigma)))/n
+        return -np.array(torch.autograd.functional.hessian(f, self.params))  # (self.mu, self.sigma)))/n
 
     def prob(self, *x):
         return np.exp(self.log_likelihood(*x, *self.params))
@@ -29,11 +29,25 @@ class NormalDistribution(Distribution):
     sigma: float = torch.tensor(1.)
     params = (mu, sigma)
 
+    def __init__(self, mu, sigma):
+        self.mu = torch.tensor(mu)
+        self.sigma = torch.tensor(sigma)
+        self.params = (mu, sigma)
+
     def sample(self, n=1):
         return [torch.normal(self.mu, self.sigma, (n,))]
 
     def log_likelihood(self, x, mu, sigma):
         return torch.log(1/torch.sqrt(2*np.pi*sigma**2)) -(x-mu)**2/(2*sigma**2)
+
+
+class NormalNaturalReparam(NpReparametrization):
+    def _old_to_new(self, theta):
+        mu, sigma = theta
+        return [mu/sigma**2, -1/(2*sigma**2)]
+
+    def _new_to_old(self, theta):
+        return [-theta[0]/(2*theta[1]), torch.sqrt(-1/(2*theta[1]))]
 
 
 class MixtureXY(Distribution):

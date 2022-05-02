@@ -18,4 +18,4 @@ def test_shape():
     model.log_likelihood(X, y, ps_0, ps_1, w)
     print([[s.sum() for s in r] for r in model.estimate_fisher_information(n=10)])
     print([[s.shape for s in r] for r in model.estimate_fisher_information(n=10)])
-    assert False
+    # assert False
