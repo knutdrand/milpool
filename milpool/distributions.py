@@ -23,13 +23,18 @@ class Distribution:
     def estimate_fisher_information(self, n=10000000):
         x = self.sample(n)
         f = self.get_func(*x)
-        return -np.array(torch.autograd.functional.hessian(f, self.params))  # (self.mu, self.sigma)))/n
+        print("P", self.params)
+        H = torch.autograd.functional.hessian(f, self.params)
+        H = np.array([[np.array(h) for h in row] for row in H])
+        H = H.reshape(H.shape[-1], -1)
+        return -np.array(H)  # (self.mu, self.sigma)))/n
 
     def prob(self, *x):
         return np.exp(self.log_likelihood(*x, *self.params))
 
     def plot(self):
         x = self._get_x_for_plotting()
+        print(x.shape, np.exp(self.log_likelihood(x, *self.params)).shape)
         plt.plot(x, np.exp(self.log_likelihood(x, *self.params)))
 
     def plot_all_errors(self, color="red", n_params=None):
@@ -41,10 +46,15 @@ class Distribution:
         all_var = get_var(I)
         n_samples = [200*i for i in range(1, 10)]
         errors = [self.get_square_errors(n_samples=n, n_iterations=200, do_plot=False) for n in n_samples]
+        print(errors)
         fig, axes = plt.subplots((n_params+1)//2, 2)
         if (n_params+1)//2 == 1:
             axes = [axes]
-        for i, param in enumerate(self.params[:n_params]):
+        if len(self.params) == 1:
+            params = self.params[0]
+        else:
+            params = self.params
+        for i, param in enumerate(params[:n_params]):
             var = all_var[i, i]
             ax = axes[i//2][i % 2]
             ax.axline((0, 0), slope=1/var, color=color, label=name+" CRLB")
@@ -53,17 +63,46 @@ class Distribution:
             ax.set_xlabel("n_samples")
 
     def get_square_errors(self, n_samples=1000, n_iterations=1000, do_plot=False):
-        estimates = np.array([self.estimate_parameters(n_samples) for _ in range(n_iterations)])
-        true_params = np.array(self.params)
+        estimates = [self.estimate_parameters(n_samples)
+                     for _ in range(n_iterations)]
+
+        if len(self.params) == 1:
+            true_params = np.array(self.params[0])
+            estimates = np.array([np.array(row[0]) for row in estimates])
+        else:
+            true_params = np.array(self.params)
+            estimates = np.array(estimates)
         if do_plot:
             for i, param in enumerate(true_params):
                 plt.hist(estimates[:, i])
                 plt.axvline(x=param)
                 plt.title(f"n={n_samples}")
                 plt.show()
-        
+
         return ((estimates-true_params)**2).sum(axis=0)/n_iterations
 
+
+class MixtureDistribution(Distribution):
+    def __init__(self, distributions, weights):
+        self._distributions = distributions
+        self._weights = weights
+        self.params = (torch.hstack([p for d in distributions for p in d.params]+[weights]),)#  for d in distributions]+weights)
+        self._param_numbers = [len(d.params) for d in distributions]
+        self._param_offsets = np.cumsum(self._param_numbers)
+        self._n_components = len(self._distributions)
+
+    def log_likelihood(self, x, *params):
+        weights = params[-self._n_components:]
+        ps = [params[0][offset-n:offset] for n, offset in zip(self._param_numbers, self._param_offsets)]
+        l = [torch.log(w) + d.log_likelihood(x, *p)
+             for w, d, p in zip(self._weights, self._distributions, ps)]
+        return torch.logsumexp(torch.vstack(l), axis=0)
+
+    def sample(self, n_samples):
+        z = torch.multinomial(self._weights, n_samples, replacement=True)
+        counts = torch.bincount(z, minlength=len(self._distributions))
+        l = [dist.sample(n)[0] for dist, n in zip(self._distributions, counts)]
+        return [torch.vstack(l)]
 
 
 class NormalDistribution(Distribution):
