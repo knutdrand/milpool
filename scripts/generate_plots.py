@@ -7,8 +7,6 @@ np.set_printoptions(suppress=True)
 
 
 def get_var(information):
-    # print(np.linalg.eig(information)[0])
-    print("#--------->", np.linalg.det(information))
     return np.linalg.inv(information)
 
 

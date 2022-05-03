@@ -7,6 +7,11 @@ from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
 
 
+def get_var(information):
+    print(information)
+    return np.linalg.inv(information)
+
+
 @dataclass
 class Distribution:
     def sample(self, n=100):
@@ -22,6 +27,43 @@ class Distribution:
 
     def prob(self, *x):
         return np.exp(self.log_likelihood(*x, *self.params))
+
+    def plot(self):
+        x = self._get_x_for_plotting()
+        plt.plot(x, np.exp(self.log_likelihood(x, *self.params)))
+
+    def plot_all_errors(self, color="red", n_params=None):
+        if n_params is None:
+            n_params = len(self.params)
+        name = self.__class__.__name__
+        I = self.estimate_fisher_information()
+        I = I[:n_params, :n_params]
+        all_var = get_var(I)
+        n_samples = [200*i for i in range(1, 10)]
+        errors = [self.get_square_errors(n_samples=n, n_iterations=200, do_plot=False) for n in n_samples]
+        fig, axes = plt.subplots((n_params+1)//2, 2)
+        if (n_params+1)//2 == 1:
+            axes = [axes]
+        for i, param in enumerate(self.params[:n_params]):
+            var = all_var[i, i]
+            ax = axes[i//2][i % 2]
+            ax.axline((0, 0), slope=1/var, color=color, label=name+" CRLB")
+            ax.plot(n_samples, 1/np.array(errors)[:, i], color=color, label=name+" errors")
+            ax.set_ylabel("1/sigma**2")
+            ax.set_xlabel("n_samples")
+
+    def get_square_errors(self, n_samples=1000, n_iterations=1000, do_plot=False):
+        estimates = np.array([self.estimate_parameters(n_samples) for _ in range(n_iterations)])
+        true_params = np.array(self.params)
+        if do_plot:
+            for i, param in enumerate(true_params):
+                plt.hist(estimates[:, i])
+                plt.axvline(x=param)
+                plt.title(f"n={n_samples}")
+                plt.show()
+        
+        return ((estimates-true_params)**2).sum(axis=0)/n_iterations
+
 
 
 class NormalDistribution(Distribution):
@@ -85,18 +127,6 @@ class MixtureXY(Distribution):
         # torch.log(1-w)+np.log(1/np.sqrt(2*np.pi))-torch.log(sigma) -(x-mu_2)**2/(2*sigma**2)
         return y*l1+(1-y)*l2
 
-    def get_square_errors(self, n_samples=1000, n_iterations=1000, do_plot=False):
-        estimates = np.array([self.estimate_parameters(n_samples) for _ in range(n_iterations)])
-        true_params = np.array(self.params)
-        if do_plot:
-            for i, param in enumerate(true_params):
-                plt.hist(estimates[:, i])
-                plt.axvline(x=param)
-                plt.title(f"n={n_samples}")
-                plt.show()
-        
-        return ((estimates-true_params)**2).sum(axis=0)/n_iterations
-
     def estimate_parameters(self, n=1000):
         x, y = self.sample(n)
         x = np.array(x)
@@ -115,11 +145,10 @@ class MixtureX(MixtureXY):
     def sample(self, n=1):
         return super().sample(n)[:1]
 
-    def plot(self):
+    def _get_x_for_plotting(self):
         d = torch.abs(self.mu_1- self.mu_2)
         m = min(self.mu_1, self.mu_2)-d/2
-        x = torch.linspace(m, m+2*d, 100)
-        plt.plot(x, np.exp(self.log_likelihood(x, *self.params)))
+        return torch.linspace(m, m+2*d, 100)
     
     def log_likelihood(self, x, mu_1, mu_2, sigma, w):
         l1 = self.l1(x, mu_1, mu_2, sigma, w)
