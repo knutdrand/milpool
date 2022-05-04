@@ -1,11 +1,11 @@
 import torch
 import numpy as np
 from dataclasses import dataclass
-from .reparametrization import Reparametrization, reparametrize, NpReparametrization, np_reparametrize
 from sklearn.linear_model import LogisticRegression
 from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
 
+from .reparametrization import Reparametrization, reparametrize, NpReparametrization, np_reparametrize
 
 def get_var(information):
     print(information)
@@ -78,7 +78,8 @@ class Distribution:
                 plt.axvline(x=param)
                 plt.title(f"n={n_samples}")
                 plt.show()
-        print(estimates.mean(axis=0))
+        print("E", estimates.mean(axis=0))
+        print("T", true_params)
         return ((estimates-true_params)**2).sum(axis=0)/n_iterations
 
 
@@ -87,7 +88,7 @@ class MixtureDistribution(Distribution):
         self._distributions = distributions
         self._weights = torch.as_tensor(weights)
         self.params = (torch.hstack([p for d in distributions for p in d.params]+[self._weights]),)#  for d in distributions]+weights)
-        self._param_numbers = [len(d.params) for d in distributions]
+        self._param_numbers = [len(d.params[0]) for d in distributions]
         self._param_offsets = np.cumsum(self._param_numbers)
         self._n_components = len(self._distributions)
 
@@ -95,7 +96,7 @@ class MixtureDistribution(Distribution):
         weights = params[0][-self._n_components:]
         ps = [params[0][offset-n:offset] for n, offset
               in zip(self._param_numbers, self._param_offsets)]
-        l = [torch.log(w) + d.log_likelihood(x, *p)
+        l = [torch.log(w) + d.log_likelihood(x, p)
              for w, d, p in zip(weights, self._distributions, ps)]
         return torch.logsumexp(torch.vstack(l), axis=0)
 
