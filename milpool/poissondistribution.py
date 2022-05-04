@@ -1,119 +1,8 @@
 import torch
 import numpy as np
 from .distributions import Distribution, MixtureDistribution
-from sklearn.mixture._base import BaseMixture
-from sklearn.mixture._gaussian_mixture import _check_means, _check_weights
+from .poissonmixture import PoissonMixture, PoissonMIL
 # from scipy.stats import poisson
-log_factorial = np.concatenate(([0], np.cumsum(np.log(np.arange(1, 1000)))))
-
-
-def log_likelihood(k, mu):
-    k = np.asanyarray(k[..., None, :], dtype="int")
-    v = (k*np.log(mu)-mu)
-    u = -log_factorial[k]
-    return (v+u).sum(axis=-1)
-
-
-def _estimate_poisson_parameters(X, resp):
-    nk = resp.sum(axis=0) + 10 * np.finfo(resp.dtype).eps
-    means = np.dot(resp.T, X) / nk[:, np.newaxis]
-    return nk, means
-
-
-class PoissonMixture(BaseMixture):
-    def __init__(
-        self,
-        n_components=1,
-        *,
-        tol=1e-3,
-        max_iter=100,
-        n_init=1,
-        init_params="kmeans",
-        weights_init=None,
-        means_init=None,
-        random_state=None,
-        warm_start=False,
-        verbose=0,
-        verbose_interval=10,
-    ):
-        super().__init__(
-            n_components=n_components,
-            tol=tol,
-            reg_covar=0,
-            max_iter=max_iter,
-            n_init=n_init,
-            init_params=init_params,
-            random_state=random_state,
-            warm_start=warm_start,
-            verbose=verbose,
-            verbose_interval=verbose_interval,
-        )
-        self.weights_init = weights_init
-        self.means_init = means_init
-
-    def _compute_lower_bound(self, _, log_prob_norm):
-        return log_prob_norm
-
-    def _check_parameters(self, X):
-        """Check the Gaussian mixture parameters are well defined."""
-        _, n_features = X.shape
-        if self.weights_init is not None:
-            self.weights_init = _check_weights(self.weights_init, self.n_components)
-
-        if self.means_init is not None:
-            self.means_init = _check_means(
-                self.means_init, self.n_components, n_features
-            )
-
-    def _get_parameters(self):
-        return (
-            self.weights_,
-            self.means_,
-        )
-
-    def _set_parameters(self, params):
-        (
-            self.weights_,
-            self.means_,
-        ) = params
-
-    def _initialize(self, X, resp):
-        """Initialization of the Gaussian mixture parameters.
-
-        Parameters
-        ----------
-        X : array-like of shape (n_samples, n_features)
-
-        resp : array-like of shape (n_samples, n_components)
-        """
-        n_samples, _ = X.shape
-
-        weights, means = _estimate_poisson_parameters(X, resp)
-        weights /= n_samples
-
-        self.weights_ = weights if self.weights_init is None else self.weights_init
-        self.means_ = means if self.means_init is None else self.means_init
-
-    def _estimate_log_prob(self, X):
-        return log_likelihood(X, self.means_)
-
-    def _estimate_log_weights(self):
-        return np.log(self.weights_)
-
-    def _m_step(self, X, log_resp):
-        """M step.
-
-        Parameters
-        ----------
-        X : array-like of shape (n_samples, n_features)
-
-        log_resp : array-like of shape (n_samples, n_components)
-            Logarithm of the posterior probabilities (or responsibilities) of
-            the point of each sample in X.
-        """
-        self.weights_, self.means_ = _estimate_poisson_parameters(X, np.exp(log_resp))
-        self.weights_ /= self.weights_.sum()
-        # print(self.weights_, self.means_)
 
 
 class PoissonDistribution(Distribution):
@@ -156,3 +45,30 @@ class PoissonMixtureDistribution(MixtureDistribution):
 
     def _get_x_for_plotting(self):
         return max((d._get_x_for_plotting() for d in self._distributions), key=len)
+
+
+class MILDistribution:
+    def __init__(self, pos_dist, neg_dist, w, q, group_size):
+        self._pos_dist = pos_dist
+        self._neg_dist = neg_dist
+        self._w = torch.as_tensor(w)
+        self._q = torch.as_tensor(q)
+        self.params = (torch.hstack([pos_dist.params[0], neg_dist.params[0], self._w, self._q]))
+        self._group_size = group_size
+
+    def sample(self, n=1):
+        y = torch.bernoulli(self._q*torch.ones(n)[:, None])
+        z = torch.bernoulli(y*torch.ones(self._group_size)*self._w)
+        n_pos = int(z.sum())
+        X_pos = self._pos_dist.sample(n_pos)[0]
+        X_neg = self._neg_dist.sample(self._group_size*n-n_pos)[0]
+        X = torch.empty((n, self._group_size, X_pos.shape[-1]))
+        X[z.bool()] = X_pos
+        X[~z.bool()] = X_neg
+        return X, y
+
+    def estimate_parameters(self, n=100):
+        X, y = self.sample(n)
+        model = PoissonMIL(n_components=2)
+        model.fit(np.array(X), np.array(y))
+        return model.means_, model.weights_
