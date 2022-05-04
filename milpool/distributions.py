@@ -34,8 +34,9 @@ class Distribution:
 
     def plot(self):
         x = self._get_x_for_plotting()
-        print(x.shape, np.exp(self.log_likelihood(x, *self.params)).shape)
-        plt.plot(x, np.exp(self.log_likelihood(x, *self.params)))
+        params = self.params
+        y = np.exp(self.log_likelihood(x[:, None], *params))
+        plt.plot(x, y)
 
     def plot_all_errors(self, color="red", n_params=None):
         if n_params is None:
@@ -65,7 +66,6 @@ class Distribution:
     def get_square_errors(self, n_samples=1000, n_iterations=1000, do_plot=False):
         estimates = [self.estimate_parameters(n_samples)
                      for _ in range(n_iterations)]
-
         if len(self.params) == 1:
             true_params = np.array(self.params[0])
             estimates = np.array([np.array(row[0]) for row in estimates])
@@ -78,24 +78,25 @@ class Distribution:
                 plt.axvline(x=param)
                 plt.title(f"n={n_samples}")
                 plt.show()
-
+        print(estimates.mean(axis=0))
         return ((estimates-true_params)**2).sum(axis=0)/n_iterations
 
 
 class MixtureDistribution(Distribution):
     def __init__(self, distributions, weights):
         self._distributions = distributions
-        self._weights = weights
-        self.params = (torch.hstack([p for d in distributions for p in d.params]+[weights]),)#  for d in distributions]+weights)
+        self._weights = torch.as_tensor(weights)
+        self.params = (torch.hstack([p for d in distributions for p in d.params]+[self._weights]),)#  for d in distributions]+weights)
         self._param_numbers = [len(d.params) for d in distributions]
         self._param_offsets = np.cumsum(self._param_numbers)
         self._n_components = len(self._distributions)
 
     def log_likelihood(self, x, *params):
-        weights = params[-self._n_components:]
-        ps = [params[0][offset-n:offset] for n, offset in zip(self._param_numbers, self._param_offsets)]
+        weights = params[0][-self._n_components:]
+        ps = [params[0][offset-n:offset] for n, offset
+              in zip(self._param_numbers, self._param_offsets)]
         l = [torch.log(w) + d.log_likelihood(x, *p)
-             for w, d, p in zip(self._weights, self._distributions, ps)]
+             for w, d, p in zip(weights, self._distributions, ps)]
         return torch.logsumexp(torch.vstack(l), axis=0)
 
     def sample(self, n_samples):
@@ -237,9 +238,6 @@ class MixtureX(MixtureXY):
             weights = torch.exp(l1-torch.logaddexp(l1, l2))
             m = weights > 1
             if i % epoch == -1:
-                print(torch.logaddexp(l1, l2).sum())
-                print(params)
-                self.plot()
                 plt.scatter(x, weights)
                 plt.show()
             assert torch.all(~m)

@@ -8,10 +8,10 @@ log_factorial = np.concatenate(([0], np.cumsum(np.log(np.arange(1, 1000)))))
 
 
 def log_likelihood(k, mu):
-    k=np.asanyarray(k[..., None], dtype="int")
+    k = np.asanyarray(k[..., None, :], dtype="int")
     v = (k*np.log(mu)-mu)
     u = -log_factorial[k]
-    return (v+u).sum(axis=-2)
+    return (v+u).sum(axis=-1)
 
 
 def _estimate_poisson_parameters(X, resp):
@@ -113,6 +113,7 @@ class PoissonMixture(BaseMixture):
         """
         self.weights_, self.means_ = _estimate_poisson_parameters(X, np.exp(log_resp))
         self.weights_ /= self.weights_.sum()
+        # print(self.weights_, self.means_)
 
 
 class PoissonDistribution(Distribution):
@@ -132,9 +133,7 @@ class PoissonDistribution(Distribution):
         v = (k*torch.log(mu)-mu)
         u = -self.log_factorial[k]
         return (v+u).sum(axis=-1)
-        # 
-        # print(v, u)
-        return v# +u
+    # return v# +u
 
     def estimate_parameters(self, n_samples=1000):
         x = self.sample(n_samples)[0]
@@ -142,8 +141,8 @@ class PoissonDistribution(Distribution):
         return (mu, )
 
     def _get_x_for_plotting(self):
-        m = (self.mu*+5*torch.sqrt(self.mu)).long()
-        return torch.arange(m+1)
+        m = (self.mu*+2*torch.sqrt(self.mu)).long()
+        return torch.arange(int(m+1))
 
 
 class PoissonMixtureDistribution(MixtureDistribution):
@@ -152,4 +151,8 @@ class PoissonMixtureDistribution(MixtureDistribution):
         x = s[0]
         model = PoissonMixture(n_components=2)
         model.fit(x)
-        return (np.concatenate([model.means_.ravel(), model.weights_]),)
+        return (np.concatenate([np.sort(model.means_, axis=0).ravel(),
+                                np.sort(model.weights_)]),)
+
+    def _get_x_for_plotting(self):
+        return max((d._get_x_for_plotting() for d in self._distributions), key=len)
