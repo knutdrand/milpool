@@ -47,13 +47,13 @@ class PoissonMixtureDistribution(MixtureDistribution):
         return max((d._get_x_for_plotting() for d in self._distributions), key=len)
 
 
-class MILDistribution:
+class MILDistribution(Distribution):
     def __init__(self, pos_dist, neg_dist, w, q, group_size):
         self._pos_dist = pos_dist
         self._neg_dist = neg_dist
         self._w = torch.as_tensor(w)
         self._q = torch.as_tensor(q)
-        self.params = (torch.hstack([pos_dist.params[0], neg_dist.params[0], self._w, self._q]))
+        self.params = (torch.hstack([pos_dist.params[0], neg_dist.params[0], self._w, self._q]),)
         self._group_size = group_size
 
     def sample(self, n=1):
@@ -67,8 +67,19 @@ class MILDistribution:
         X[~z.bool()] = X_neg
         return X, y
 
+    def log_likelihood(self, X, y, *params):
+        params = params[0]
+        w, q = params[-2:]
+        n_p = int((len(params)-2)/2)
+        neg_lik = self._neg_dist.log_likelihood(X, *(params[n_p:2*n_p], ))
+        pos_lik = self._pos_dist.log_likelihood(X, params[:n_p])
+        comb_lik = torch.logaddexp(torch.log(w) + pos_lik,
+                                   torch.log(1-w) + neg_lik)
+        return y.ravel()*(torch.log(q) + comb_lik.sum(axis=-1))+(1-y.ravel())*(torch.log(1-q) + neg_lik.sum(axis=-1))
+
     def estimate_parameters(self, n=100):
-        X, y = self.sample(n)
+        X, y = (np.array(d) for d in self.sample(n))
         model = PoissonMIL(n_components=2)
-        model.fit(np.array(X), np.array(y))
-        return model.means_, model.weights_
+        model.fit(X, y)
+        return (np.concatenate((
+            model.means_.ravel(), model.weights_.ravel()[[0]], [y.sum()/y.size])),)

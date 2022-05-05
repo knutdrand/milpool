@@ -25,6 +25,7 @@ class Distribution:
         f = self.get_func(*x)
         print("P", self.params)
         H = torch.autograd.functional.hessian(f, self.params)
+        print(H)
         H = np.array([[np.array(h) for h in row] for row in H])
         H = H.reshape(H.shape[-1], -1)
         return -np.array(H)  # (self.mu, self.sigma)))/n

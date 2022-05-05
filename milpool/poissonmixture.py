@@ -148,7 +148,6 @@ class PoissonMIL(PoissonMixture):
         resp = np.exp(log_resp)
         self.weights_, self.means_ = _estimate_poisson_parameters_mil(
             X, resp, self._neg_sum, self._n_neg)
-        print(self.weights_.sum())
         self.weights_ /= self.weights_.sum()
 
     def _initialize_parameters(self, X, random_state):
